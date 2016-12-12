@@ -1,5 +1,7 @@
 #include "CFAEngine.h"
 #include "Registers.h"
+#include "Opcodes.h"
+
 
 CFAEngine::CFAEngine()
 {
@@ -12,6 +14,9 @@ CFAEngine::CFAEngine()
 		memset(ptrMemBase, 0xCC, MAX_MEMORY_SIZE);
 		cout << "Virtual memory allocation filled with interupts\n";
 	}
+
+	this->opcodes = new Opcodes();
+
 }
 
 CFAEngine::~CFAEngine()
@@ -302,45 +307,81 @@ bool CFAEngine::stackPop(DWORD* value){
 }
 
 //see this: http://www.c-jump.com/CIS77/CPU/x86/lecture.html
-bool CFAEngine::fetchInstruction(BYTE* nextOpcode, BOOLEAN* isDoubleLenOpcode){
-	cout << " -+- FETCHING INSTRUCTION -+-\n";
+bool CFAEngine::fetchInstruction(OpcodeDefinition* nextOpcode, BOOLEAN* isDoubleLenOpcode){
+	cout << endl;
+	CFALogging::logInfoMessage("Fetching instruction from memory");
 	if (Registers::eip == NULL){
 		return false;
 	}
 	
-	BYTE opcodeByte;
-	BYTE ins;
-	BYTE sz;
-	BYTE dir;
-	BYTE ModRegRMByte;
-	BYTE mod;
-	BYTE reg;
-	BYTE RM;
+	BYTE opcode = 0;
+	BYTE secondByte = 0;
+
+	BYTE ins = 0;
+	BYTE sz = 0;
+	BYTE dir = 0;
+
+	BYTE ModRegRMByte = 0;
+	BYTE mod = 0;
+	BYTE reg = 0;
+	BYTE RM = 0;
 	BOOLEAN hasImmediateConstant = false;
 	BOOLEAN twoByteOpcode = false;
 
+	BYTE SIB = 0;
+	BYTE scale = 0;
+	BYTE index = 0;
+	BYTE base = 0;
+	BYTE indexMultiplier = 0;
+
+	DWORD immediateData = NULL;
+
+	Opcodes ops;
+	char opTag[6] = { 0 };
+
 	/*
-		Extract opcode byte
+		Extract optional (0-4) prefix bytes
+		0: instruction prefix
+		1: Address-size prefix
+		2: Operand-size prefix
+		3: Segment override
 	*/
-	Registers::GetRegisterContentByte(Registers::eip, &opcodeByte);
+
+
+	/*
+		Extract opcode byte(s)
+
+		If opcode byte 0 == 0x0F, opcode contains a second byte.
+	*/
+	Registers::GetRegisterContentByte(Registers::eip, &opcode);
 	Registers::IncrementEipBy(1);
 
-	if (opcodeByte == 0x0F){
+	if (opcode == 0x0F){
 		twoByteOpcode = true;
-		cout << "TWO BYTE OPCODE IDENTIFIED!\n";
+		cout << "Double byte opcode identified!\n";
+		Registers::GetRegisterContentByte(Registers::eip, &secondByte);
 		Registers::IncrementEipBy(1);
-	} else if (opcodeByte & 0x80){
-		hasImmediateConstant = true;
-		cout << "Instruction has immediate constant\n";
+		opcode = ((opcode << 8) & 0xFF00) + secondByte;
+		cout << "New opcode: " << hex << opcode;
+	} else {
+		cout << "Single byte opcode identified!\n";
+		if (opcode & 0x80) {
+			hasImmediateConstant = true;
+			cout << "Instruction has immediate constant\n";
+		}
+
+		ops.GetOpcode(opcode, nextOpcode);
+		nextOpcode->getMnemonic(opTag, 5);
+		cout << "OPCODE: " << opTag << " - (0x" << int(opcode) << ")" << endl;
 	}
 
-	ins = opcodeByte & 0xFC;
-	sz = opcodeByte & 0x01;
-	dir = (opcodeByte & 0x02) >> 1;
+	ins = opcode & 0xFC;
+	sz = opcode & 0x01;
+	dir = (opcode & 0x02) >> 1;
 
-	cout << "\tINSTRUCTION:\t" << int(ins) << endl;
-	cout << "\tOPCODE SIZE:\t" << int(sz) << endl;
-	cout << "\tDIRECTION:\t" << int(dir) << endl;
+	cout << "\Instruction:\t" << int(ins) << endl;
+	cout << "\Operand size:\t" << int(sz) << endl;
+	cout << "\Direction:\t" << int(dir) << endl;
 	
 	if (sz){
 		cout << "\t(32)/16 bit operands selected!\n";
@@ -354,13 +395,19 @@ bool CFAEngine::fetchInstruction(BYTE* nextOpcode, BOOLEAN* isDoubleLenOpcode){
 		cout << "\tOperating on R/M (from register)\n";
 	}
 
-	/*if (hasImmediateConstant){
+	/*
+	Extract mod-R/M byte
 
-	} else {*/
-		/*
-		Extract MOD-REG-R/M Byte
-		*/
+	bits XX......: mod
+	bits ..XXX...: reg
+	bits .....XXX: RM
+	*/
+
+	if (nextOpcode->hasModRMByte()) {
+
 		Registers::GetRegisterContentByte(Registers::eip, &ModRegRMByte);
+		Registers::IncrementEipBy(1);
+
 		mod = (ModRegRMByte & 0xC0) >> 6; // XX......
 		reg = (ModRegRMByte & 0x38) >> 3; // ..XXX...
 		RM = ModRegRMByte & 0x07;         // .....XXX
@@ -369,7 +416,7 @@ bool CFAEngine::fetchInstruction(BYTE* nextOpcode, BOOLEAN* isDoubleLenOpcode){
 		cout << "\tREG:\t" << int(reg) << endl;
 		cout << "\tR/M:\t" << int(RM) << endl;
 
-		switch (mod){
+		switch (mod) {
 		case 0x00:
 			cout << "Register indirect addressing mode (or SIB with no displacement)\n";
 			break;
@@ -388,95 +435,274 @@ bool CFAEngine::fetchInstruction(BYTE* nextOpcode, BOOLEAN* isDoubleLenOpcode){
 		}
 
 		cout << "REGISTER: ";
-
-		switch (reg){
+		DWORD* rAddr = NULL;
+		switch (reg) {
 		case 0x00:
 			cout << "EAX";
+			rAddr = (DWORD*)&Registers::eax;
 			break;
 		case 0x01:
 			cout << "ECX";
+			rAddr = (DWORD*)&Registers::ecx;
 			break;
 		case 0x02:
 			cout << "EDX";
+			rAddr = (DWORD*)&Registers::edx;
 			break;
 		case 0x03:
 			cout << "EBX";
+			rAddr = (DWORD*)&Registers::ebx;
 			break;
 		case 0x04:
 			cout << "ESP";
+			rAddr = (DWORD*)&Registers::esp;
 			break;
 		case 0x05:
 			cout << "EBP";
+			rAddr = (DWORD*)&Registers::ebp;
 			break;
 		case 0x06:
 			cout << "ESI";
+			rAddr = (DWORD*)&Registers::esi;
 			break;
 		case 0x07:
 			cout << "EDI";
+			rAddr = (DWORD*)&Registers::edi;
 			break;
 		default:
 			break;
 		}
+		if (!dir) nextOpcode->SetSource(rAddr);
+		else nextOpcode->SetDestination(rAddr);
 
 		cout << endl;
 
 		cout << "MOD R/M: ";
-
-		switch (RM){
+		DWORD* mAddr = NULL;
+		switch (RM) {
 		case 0x00:
 			cout << "EAX";
+			mAddr = (DWORD*)&Registers::eax;
 			break;
 		case 0x01:
 			cout << "ECX";
+			mAddr = (DWORD*)&Registers::ecx;
 			break;
 		case 0x02:
 			cout << "EDX";
+			mAddr = (DWORD*)&Registers::edx;
 			break;
 		case 0x03:
 			cout << "EBX";
+			mAddr = (DWORD*)&Registers::ebx;
 			break;
 		case 0x04:
 			cout << "ESP";
+			mAddr = (DWORD*)&Registers::esp;
 			break;
 		case 0x05:
 			cout << "EBP";
+			mAddr = (DWORD*)&Registers::ebp;
 			break;
 		case 0x06:
 			cout << "ESI";
+			mAddr = (DWORD*)&Registers::esi;
 			break;
 		case 0x07:
 			cout << "EDI";
+			mAddr = (DWORD*)&Registers::edi;
 			break;
 		default:
 			break;
 		}
 
+		if (dir) nextOpcode->SetSource(mAddr);
+		else nextOpcode->SetDestination(mAddr);
+
 		cout << endl;
+	}
+		
 	//}
 
-	*nextOpcode = opcodeByte;
+	/*
+		Extract SIB (Scaled Index Byte) byte
+	*/
+	/*
+	Registers::GetRegisterContentByte(Registers::eip, &SIB);
+	scale = (SIB & 0xC0) >> 6; // XX......
+	index = (SIB & 0x38) >> 3; // ..XXX...
+	base = SIB & 0x07;         // .....XXX
+
+	switch (scale) {
+	case 0x00:
+		indexMultiplier = 1;
+		break;
+	case 0x01:
+		indexMultiplier = 2;
+		break;
+	case 0x02:
+		indexMultiplier = 4;
+		break;
+	case 0x04:
+		indexMultiplier = 8;
+		break;
+	default:
+		cout << "Invalid scale value" << endl;
+		break;
+	};
+
+	switch (index) {
+	case 0x00:
+		break;
+	case 0x01:
+		break;
+	case 0x02:
+		break;
+	case 0x03:
+		break;
+	case 0x05:
+		break;
+	case 0x06:
+		break;
+	case 0x07:
+		break;
+	case 0x04:
+	default:
+		cout << "Invalid index value" << endl;
+		break;
+
+	};
+
+	switch (base) {
+	case 0x00:
+		cout << "SIB EAX Selected";
+		break;
+	case 0x01:
+		cout << "SIB ECX Selected";
+		break;
+	case 0x02:
+		cout << "SIB EDX Selected";
+		break;
+	case 0x03:
+		cout << "SIB EBX Selected";
+		break;
+	case 0x04:
+		cout << "SIB ESP Selected";
+		break;
+	case 0x05:
+		cout << "SIB Displacement-only...";
+		break;
+	case 0x06:
+		cout << "SIB ESI Selected";
+		break;
+	case 0x07:
+		cout << "SIB EDI Selected";
+		break;
+	};
+
+	/*
+		Extract displacement byte
+	*/
+
+
+	/*
+		Exctract immediate data
+	*/
+
 	*isDoubleLenOpcode = twoByteOpcode;
 	return true;
 }
 
 bool CFAEngine::executeStep(){
-	BYTE opcode;
+	OpcodeDefinition* opcode = NULL;
 	BOOLEAN isDoubleLenOpcode = false;
-	DWORD operand;
-	DWORD offset;
-	BYTE destination;
+	DWORD operand = NULL;
+	DWORD offset = NULL;
+	BYTE destination = NULL;
 
 	DWORD* CURRENT_OPCODE_POINTER = Registers::eip;
 	DWORD* CURRENT_OPERAND_POINTER = (DWORD*)((BYTE*)CURRENT_OPCODE_POINTER + sizeof(opcode));
 
-	if (!fetchInstruction(&opcode, &isDoubleLenOpcode)){
+	char opTag[6] = { 0 };
+	DWORD immediateData = NULL;
+
+	BYTE ins = 0;
+	BYTE sz = 0;
+	BYTE dir = 0;
+
+	cout << "Current EIP value: " << hex << Registers::eip << endl;
+
+	opcode = (OpcodeDefinition*)malloc(sizeof(OpcodeDefinition));
+
+	if (!fetchInstruction(opcode, &isDoubleLenOpcode)){
 		cout << "Fetch failed!" << endl;
 		return false;
 	}
 
-	if (!isDoubleLenOpcode){
+	ins = opcode->opcode & 0xFC;
+	sz = opcode->opcode & 0x01;
+	dir = (opcode->opcode & 0x02) >> 1;
+
+	opcode->getMnemonic(opTag, 5);
+
+	if (!strncmp(opTag, "PUSH", 4)) {
+		cout << "PUSH instruction active\n";
+		switch (opcode->getOpcode()) {
+		case 0x50:
+			stackPush((DWORD)Registers::eax);
+			break;
+		case 0x51:
+			stackPush((DWORD)Registers::ecx);
+			break;
+		case 0x52:
+			stackPush((DWORD)Registers::edx);
+			break;
+		case 0x53:
+			stackPush((DWORD)Registers::ebx);
+			break;
+		case 0x54:
+			stackPush((DWORD)Registers::esp);
+			break;
+		case 0x55:
+			stackPush((DWORD)Registers::ebp);
+			break;
+		case 0x56:
+			stackPush((DWORD)Registers::esi);
+			break;
+		case 0x57:
+			stackPush((DWORD)Registers::edi);
+			break;
+		}
+	} 
+	else if (!strncmp(opTag, "CALL", 4)) {
+		cout << "CALL instruction active\n";
+		BOOLEAN is32Bit = true;
+		if (is32Bit) {
+			Registers::GetRegisterContentDword(Registers::eip, (DWORD*)&immediateData);
+		}
+		else {
+			Registers::GetRegisterContentWord(Registers::eip, (WORD*)&immediateData);
+		}
+		stackPush((DWORD)(Registers::eip) + sizeof(DWORD));
+		Registers::SetEip((DWORD)((BYTE*)Registers::eip + 4 + (DWORD)immediateData)); // Set eip to offset (start of function)
+	}
+	else if (!strncmp(opTag, "RETN", 4)) {
+		cout << "Returning to previous function\n";
+
+		stackPop(Registers::eip);
+	}
+	else if (!strncmp(opTag, "JMP", 3)) {
+		Registers::GetRegisterContentDword(Registers::eip, &offset);
+		Registers::SetEip((DWORD)((BYTE*)Registers::eip + 4 + offset));
+	}
+	else if (!strncmp(opTag, "MOV", 3)) {
+		*(opcode->Destination) = *(opcode->Source);
+	}
+
+
+	/*if (!isDoubleLenOpcode){
 		cout << "Single byte opcode\n";
-		switch (opcode)	{
+		switch (opcode->opcode)	{
 		case 0x55:
 			cout << "PUSH EBP\n";
 			stackPush((DWORD)Registers::ebp);
@@ -514,12 +740,12 @@ bool CFAEngine::executeStep(){
 			cout << "INTERUPT!\n";
 			return false;
 		default:
-			cout << "Unknown opcode: 0x" << opcode << endl;
+			cout << "Unknown opcode: 0x" << opcode->opcode << endl;
 			break;
 		}
 	} else {
 		cout << "Double byte opcode\n";
-		switch (opcode){
+		switch (opcode->opcode){
 		case 0x5C:
 			cout << "Double length 5C opcode\n";
 			break;
@@ -528,7 +754,7 @@ bool CFAEngine::executeStep(){
 			break;
 		}
 	}
-	
+	*/
 	return true;
 }
 

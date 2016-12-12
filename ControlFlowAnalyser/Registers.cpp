@@ -45,17 +45,17 @@ bool Registers::IncrementEipBy(int nBytes){
 }
 
 bool Registers::GetRegisterContentByte(DWORD* reg, BYTE* val){
-	*val = (BYTE)*((BYTE*)Registers::eip);
+	*val = (BYTE)*reg;
 	return true;
 }
 
 bool Registers::GetRegisterContentWord(DWORD* reg, WORD* val){
-	*val = (WORD)*((WORD*)Registers::eip);
+	*val = (WORD)*reg;
 	return true;
 }
 
 bool Registers::GetRegisterContentDword(DWORD* reg, DWORD* val){
-	*val = (DWORD)*((DWORD*)Registers::eip);
+	*val = (DWORD)*reg;
 	return true;
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "Header.h"
+#include "Opcodes.h"
 #define MAX_MEMORY_SIZE 512000
 
 class CFAEngine
@@ -8,6 +9,7 @@ public:
 
 	HANDLE hLoadedFile;
 	BYTE* ptrMemBase;
+	Opcodes* opcodes;
 
 	CFAEngine();
 	~CFAEngine();
@@ -27,7 +29,7 @@ public:
 	bool stackPush(DWORD value);
 	bool stackPop(DWORD* value);
 
-	bool fetchInstruction(BYTE* nextOpcode, BOOLEAN* isDoubleLenOpcode);
+	bool fetchInstruction(OpcodeDefinition* nextOpcode, BOOLEAN* isDoubleLenOpcode);
 	bool executeStep();
 };
 
