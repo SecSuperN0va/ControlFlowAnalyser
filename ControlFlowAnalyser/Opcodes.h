@@ -1,4 +1,7 @@
 #pragma once
+#ifndef OPCODES_H
+#define OPCODES_H
+
 #include "Header.h"
 
 class OpcodeDefinition
@@ -36,7 +39,7 @@ public:
 
 	BYTE getOpcode();
 	BOOLEAN isSingleByteInstruction();
-	BOOLEAN getMnemonic(char* lpMnemonic, int maxMnemonicLen);
+	BOOLEAN getMnemonic(char* lpMnemonic, rsize_t szMnemonic, int maxMnemonicLen);
 	BOOLEAN isTwoByteOpcode();
 	BOOLEAN hasInstructionPrefixByte();
 	BOOLEAN hasAddressSizePrefixByte();
@@ -65,3 +68,4 @@ public:
 	BOOLEAN GetOpcode(BYTE opcodeByte, OpcodeDefinition* opDef);
 };
 
+#endif // !

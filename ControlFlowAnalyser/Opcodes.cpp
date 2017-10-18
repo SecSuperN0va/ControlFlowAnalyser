@@ -24,7 +24,7 @@ OpcodeDefinition::~OpcodeDefinition()
 {
 }
 
-BOOLEAN OpcodeDefinition::getMnemonic(char* lpMnemonic, int maxMnemonicLen){
+BOOLEAN OpcodeDefinition::getMnemonic(char* lpMnemonic, rsize_t szMnemonic, int maxMnemonicLen){
 	int i = 0;
 
 	for (i = 0; this->mnemonic[i]; i++) {}
@@ -32,7 +32,7 @@ BOOLEAN OpcodeDefinition::getMnemonic(char* lpMnemonic, int maxMnemonicLen){
 	if (i > maxMnemonicLen) {
 		return false;
 	}
-	strncpy(lpMnemonic, this->mnemonic, i);
+	strncpy_s(lpMnemonic, szMnemonic, this->mnemonic, i);
 	return true;
 }
 

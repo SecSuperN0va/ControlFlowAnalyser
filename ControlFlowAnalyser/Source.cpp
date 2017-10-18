@@ -1,20 +1,20 @@
 #include "Header.h"
-#include "CFAEngine.h"
+#include "YADEngine.h"
 #include "Registers.h"
 
 
 int main(int argc, char* argv[]) {
-	CFALogging::logInfoMessage("=== Welcome to The Control Flow Analyser (CFA) ===");
+	YADLogging::logInfoMessage("=== Welcome to The Control Flow Analyser (CFA) ===");
 
 	if (argc != 2)
 	{
-		CFALogging::logWarnMessage("\nNot Enough Arguments\n");
+		YADLogging::logWarnMessage("\nNot Enough Arguments\n");
 		return 1;
 	}
 
-	CFALogging::logInfoMessage("Opening the executable.");
+	YADLogging::logInfoMessage("Opening the executable.");
 
-	CFAEngine* engine = new CFAEngine();
+	YADEngine* engine = new YADEngine();
 	DWORD entrypoint = NULL;
 	engine->loadExecutable(argv[1], &entrypoint);
 	engine->createStack(0);
@@ -29,11 +29,11 @@ int main(int argc, char* argv[]) {
 
 	//engine->traverseFunction((void*)entrypoint);
 
-	CFALogging::logInfoMessage("Executing...");
+	YADLogging::logInfoMessage("Executing...");
 
 	while (engine->executeStep());
 
-	CFALogging::logInfoMessage("=== The Control Flow Analyser is now terminating! ===");
+	YADLogging::logInfoMessage("=== The Control Flow Analyser is now terminating! ===");
 	std::cin.get();
 	return 0;
 }

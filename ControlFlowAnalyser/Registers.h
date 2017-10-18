@@ -1,4 +1,7 @@
 #pragma once
+#ifndef REGISTERS_H
+#define REGISTERS_H
+
 #include "Header.h"
 class Registers
 {
@@ -30,3 +33,4 @@ public:
 
 };
 
+#endif
