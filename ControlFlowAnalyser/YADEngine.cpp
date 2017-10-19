@@ -310,6 +310,8 @@ bool YADEngine::stackPop(DWORD* value){
 bool YADEngine::fetchInstruction(OpcodeDefinition* nextOpcode, BOOLEAN* isDoubleLenOpcode){
 	cout << endl;
 	YADLogging::logInfoMessage("Fetching instruction from memory");
+	DWORD currentEip = NULL;
+	cout << "Fetch from Current EIP " << hex << Registers::eip << endl;
 	if (Registers::eip == NULL){
 		return false;
 	}
@@ -376,7 +378,11 @@ bool YADEngine::fetchInstruction(OpcodeDefinition* nextOpcode, BOOLEAN* isDouble
 	}
 
 	ins = opcode & 0xFC;
+
+	//if sz == 0, operands are 8-bit, otherwise if sz == 1, operands are 16 or 32-bit
 	sz = opcode & 0x01;
+
+	// if dir == 0, direction is reg -> mem, otherwise mem -> reg
 	dir = (opcode & 0x02) >> 1;
 
 	cout << "\tInstruction:\t" << int(ins) << endl;
@@ -404,7 +410,7 @@ bool YADEngine::fetchInstruction(OpcodeDefinition* nextOpcode, BOOLEAN* isDouble
 	*/
 
 	if (nextOpcode->hasModRMByte()) {
-
+		cout << "Has ModRM byte" << endl;
 		Registers::GetRegisterContentByte(Registers::eip, &ModRegRMByte);
 		Registers::IncrementEipBy(1);
 
@@ -472,7 +478,7 @@ bool YADEngine::fetchInstruction(OpcodeDefinition* nextOpcode, BOOLEAN* isDouble
 		default:
 			break;
 		}
-		if (!dir) nextOpcode->SetSource(rAddr);
+		if (dir) nextOpcode->SetSource(rAddr);
 		else nextOpcode->SetDestination(rAddr);
 
 		cout << endl;
@@ -516,7 +522,7 @@ bool YADEngine::fetchInstruction(OpcodeDefinition* nextOpcode, BOOLEAN* isDouble
 			break;
 		}
 
-		if (dir) nextOpcode->SetSource(mAddr);
+		if (!dir) nextOpcode->SetSource(mAddr);
 		else nextOpcode->SetDestination(mAddr);
 
 		cout << endl;
@@ -706,6 +712,13 @@ bool YADEngine::executeStep(){
 	}
 	else if (!strncmp(opTag, "MOV", 3)) {
 		*(opcode->Destination) = *(opcode->Source);
+	}
+	else if (!strncmp(opTag, "SUB", 3)) {
+		BYTE subOperand = NULL;
+		Registers::GetRegisterContentByte(Registers::eip, &subOperand);
+		Registers::IncrementEip();
+		DWORD* dst = (DWORD*)*((DWORD*)*opcode->Destination);
+		*dst = *dst - subOperand;
 	}
 
 
