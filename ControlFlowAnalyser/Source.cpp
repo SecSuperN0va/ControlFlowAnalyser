@@ -8,7 +8,7 @@ int main(int argc, char* argv[]) {
 
 	if (argc != 2)
 	{
-		YADLogging::logWarnMessage("\nNot Enough Arguments\n");
+		YADLogging::logWarnMessage("\nNot Enough Arguments. Please specify an executable to analyse\n");
 		return 1;
 	}
 
@@ -26,8 +26,6 @@ int main(int argc, char* argv[]) {
 	}
 
 	cout << "Identified entry point into loaded executable: 0x" << hex << entrypoint << endl;
-
-	//engine->traverseFunction((void*)entrypoint);
 
 	YADLogging::logInfoMessage("Executing...");
 
